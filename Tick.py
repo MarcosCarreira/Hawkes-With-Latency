@@ -21,11 +21,7 @@
 
 # %% Python imports
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import xlwings as xw
-import itertools
+# import matplotlib.pyplot as plt
 
 # %% [markdown]
 # ## Tick Imports
@@ -70,7 +66,7 @@ from tick.hawkes import HawkesSumExpKern, HawkesSumGaussians
 # %% Import Plots
 from tick.plot import plot_timefunction
 from tick.plot import plot_point_process
-from tick.plot import plot_hawkes_kernel_norms, plot_hawkes_kernels
+from tick.plot import plot_hawkes_kernels
 from tick.plot import plot_basis_kernels
 
 # %% [markdown]
@@ -79,7 +75,6 @@ from tick.plot import plot_basis_kernels
 # %% Define Support
 support = 4
 
-
 # %% [markdown]
 # #### Using a function
 
@@ -87,15 +82,13 @@ support = 4
 def g1(t):
     return 0.7 * 0.5 * 10 * np.exp(-0.5 * 10 * t)
 
-
 # %% [markdown]
 # Introducing a latency with heaviside
 
 # %% Function g2 (latency)
 def g2(t):
-    return 0.7 * 0.5 * 10 * np.exp(-0.5 * 10 * (t - 1))\
-        * np.heaviside(t -1, 1) # To ensure zero before t0=1
-
+    return 0.7 * 0.5 * 10 * np.exp(-0.5 * 10 * (t - 0.1))\
+        * np.heaviside(t - 0.1, 1) # To ensure zero before t0=1
 
 # %% Define xgrid
 xgrid = np.linspace(0, support, 40+1)
@@ -118,21 +111,20 @@ plot_timefunction(tf2)
 
 # %% Define the time_function
 def time_func(f, support, t0=0, steps=1000):
-    t_values = np.linspace(0, support, steps+1)
+    t_values = np.linspace(0, support, steps + 1)
     y_values = f(t_values - t0) * np.heaviside(t_values - t0, 1)
     return TimeFunction(values=(t_values, y_values),
                         border_type=TimeFunction.Border0,
                         inter_mode=TimeFunction.InterLinear)
 
-
 # %% Define tf_1
 tf_1 = time_func(g1, 4)
 
 # %% Define tf_2
-tf_2 = time_func(g1, 4, 1)
+tf_2 = time_func(g1, 4, 0.1)
 
 # %% Check equivalent values
-print([[tf_1.value(0), tf_1.value(1)], [tf_2.value(1), tf_2.value(2)]])
+print([[tf_1.value(0), tf_1.value(1)], [tf_2.value(0.1), tf_2.value(1.1)]])
 
 # %% Plot tf_1
 plot_timefunction(tf_1)
@@ -243,6 +235,10 @@ bk_kernel = bk.basis_kernels
 
 # %% Plot HawkesBasisKernels
 plot_hawkes_kernels(bk, hawkes=hawkes_m)
+
+
+# %% Plot HawkesBasisKernels
+plot_basis_kernels(bk, basis_kernels=[g1, g2])
 
 # %% [markdown]
 # #### Parametric
