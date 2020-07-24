@@ -1,0 +1,1004 @@
+#LyX 2.3 created this file. For more info see http://www.lyx.org/
+\lyxformat 544
+\begin_document
+\begin_header
+\save_transient_properties true
+\origin unavailable
+\textclass article
+\use_default_options true
+\maintain_unincluded_children false
+\language english
+\language_package default
+\inputencoding auto
+\fontencoding global
+\font_roman "default" "default"
+\font_sans "default" "default"
+\font_typewriter "default" "default"
+\font_math "auto" "auto"
+\font_default_family default
+\use_non_tex_fonts false
+\font_sc false
+\font_osf false
+\font_sf_scale 100 100
+\font_tt_scale 100 100
+\use_microtype false
+\use_dash_ligatures true
+\graphics default
+\default_output_format default
+\output_sync 0
+\bibtex_command default
+\index_command default
+\float_placement H
+\paperfontsize default
+\spacing single
+\use_hyperref false
+\papersize default
+\use_geometry false
+\use_package amsmath 1
+\use_package amssymb 1
+\use_package cancel 1
+\use_package esint 1
+\use_package mathdots 1
+\use_package mathtools 1
+\use_package mhchem 1
+\use_package stackrel 1
+\use_package stmaryrd 1
+\use_package undertilde 1
+\cite_engine basic
+\cite_engine_type default
+\biblio_style plain
+\use_bibtopic false
+\use_indices false
+\paperorientation portrait
+\suppress_date false
+\justification true
+\use_refstyle 1
+\use_minted 0
+\index Index
+\shortcut idx
+\color #008000
+\end_index
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation indent
+\paragraph_indentation default
+\is_math_indent 0
+\math_numbering_side default
+\quotes_style english
+\dynamic_quotes 0
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tracking_changes false
+\output_changes false
+\html_math_output 0
+\html_css_as_file 0
+\html_be_strict false
+\end_header
+
+\begin_body
+
+\begin_layout Title
+On the need for latency as a parameter in exponential and sum-of-exponentials
+ in Tick
+\end_layout
+
+\begin_layout Author
+Marcos Costa Santos Carreira
+\end_layout
+
+\begin_layout Date
+Jul-2020
+\end_layout
+
+\begin_layout Section
+Setup
+\end_layout
+
+\begin_layout Subsection
+Imports
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float algorithm
+placement H
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\begin_inset listings
+inline false
+status open
+
+\begin_layout Plain Layout
+
+import numpy as np
+\end_layout
+
+\begin_layout Plain Layout
+
+import pandas as pd
+\end_layout
+
+\begin_layout Plain Layout
+
+from tick.hawkes import SimuHawkes, SimuHawkesMulti
+\end_layout
+
+\begin_layout Plain Layout
+
+from tick.base import TimeFunction
+\end_layout
+
+\begin_layout Plain Layout
+
+from tick.hawkes import HawkesKernelTimeFunc
+\end_layout
+
+\begin_layout Plain Layout
+
+from tick.hawkes import HawkesKernelSumExp
+\end_layout
+
+\begin_layout Plain Layout
+
+from tick.hawkes import HawkesEM, HawkesBasisKernels
+\end_layout
+
+\begin_layout Plain Layout
+
+from tick.hawkes import HawkesSumExpKern, HawkesSumGaussians
+\end_layout
+
+\begin_layout Plain Layout
+
+from tick.plot import plot_timefunction
+\end_layout
+
+\begin_layout Plain Layout
+
+from tick.plot import plot_point_process
+\end_layout
+
+\begin_layout Plain Layout
+
+from tick.plot import plot_hawkes_kernels
+\end_layout
+
+\begin_layout Plain Layout
+
+from tick.plot import plot_basis_kernels
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Imports
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Subsection
+Constants and functions
+\end_layout
+
+\begin_layout Standard
+A small latency (kernel discretized with enough resolution to pick it up):
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float algorithm
+placement H
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\begin_inset listings
+lstparams "language=Python,basicstyle={\sffamily}"
+inline false
+status open
+
+\begin_layout Plain Layout
+
+support = 4
+\end_layout
+
+\begin_layout Plain Layout
+
+t0 = 0.01
+\end_layout
+
+\begin_layout Plain Layout
+
+n_steps = int(support/t0)*10
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+def g1(t):     
+\end_layout
+
+\begin_layout Plain Layout
+
+	return 0.7 * 5.0 * np.exp(-5.0 * t)
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+def g2(t):
+\end_layout
+
+\begin_layout Plain Layout
+
+    return 0.7 * 5.0 * np.exp(-5.0 * (t - t0))
+\backslash
+
+\end_layout
+
+\begin_layout Plain Layout
+
+        * np.heaviside(t - t0, 1) # To ensure zero before t0
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+def time_func(f, support, t0=0, steps=1000):
+\end_layout
+
+\begin_layout Plain Layout
+
+    t_values = np.linspace(0, support, steps + 1)
+\end_layout
+
+\begin_layout Plain Layout
+
+    y_values = f(t_values - t0) * np.heaviside(t_values - t0, 1)
+\end_layout
+
+\begin_layout Plain Layout
+
+    return TimeFunction(values=(t_values, y_values),
+\end_layout
+
+\begin_layout Plain Layout
+
+                        border_type=TimeFunction.Border0,
+\end_layout
+
+\begin_layout Plain Layout
+
+                        inter_mode=TimeFunction.InterLinear)
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+tf_1 = time_func(g1, support, 0, n_steps)
+\end_layout
+
+\begin_layout Plain Layout
+
+tf_2 = time_func(g1, support, t0, n_steps)
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Constants and functions
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Subsection
+Time function plots
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+placement H
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename Tick_Figure_1_0_TF.png
+	lyxscale 40
+	scale 40
+
+\end_inset
+
+
+\begin_inset Graphics
+	filename Tick_Figure_2_t0_TF.png
+	lyxscale 40
+	scale 40
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Time functions
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Section
+Simulations
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float algorithm
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\begin_inset listings
+lstparams "language=Python,basicstyle={\sffamily}"
+inline false
+status open
+
+\begin_layout Plain Layout
+
+kernel_1 = HawkesKernelTimeFunc(tf_1)
+\end_layout
+
+\begin_layout Plain Layout
+
+kernel_2 = HawkesKernelTimeFunc(tf_2)
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+hawkes_m1 = SimuHawkes(n_nodes=1, end_time=10000)
+\end_layout
+
+\begin_layout Plain Layout
+
+hawkes_m1.set_baseline(0, 1.)
+\end_layout
+
+\begin_layout Plain Layout
+
+hawkes_m2 = SimuHawkes(n_nodes=1, end_time=10000)
+\end_layout
+
+\begin_layout Plain Layout
+
+hawkes_m2.set_baseline(0, 1.)
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+hawkes_m1.set_kernel(0, 0, kernel_1)
+\end_layout
+
+\begin_layout Plain Layout
+
+hawkes_m2.set_kernel(0, 0, kernel_2)
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+multi_1 = SimuHawkesMulti(hawkes_m1, n_simulations=100)
+\end_layout
+
+\begin_layout Plain Layout
+
+multi_1.simulate()
+\end_layout
+
+\begin_layout Plain Layout
+
+multi_1_timestamps = multi_1.timestamps
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+multi_2 = SimuHawkesMulti(hawkes_m2, n_simulations=100)
+\end_layout
+
+\begin_layout Plain Layout
+
+multi_2.simulate()
+\end_layout
+
+\begin_layout Plain Layout
+
+multi_2_timestamps = multi_2.timestamps
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Simulation
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Section
+Learners
+\end_layout
+
+\begin_layout Subsection
+Non-parametric
+\end_layout
+
+\begin_layout Subsubsection
+HawkesEM
+\end_layout
+
+\begin_layout Standard
+Running HawkesEM for the 2 kernels:
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float algorithm
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\begin_inset listings
+lstparams "language=PSTricks,basicstyle={\sffamily}"
+inline false
+status open
+
+\begin_layout Plain Layout
+
+kern_d =
+\backslash
+
+\end_layout
+
+\begin_layout Plain Layout
+
+    np.concatenate(
+\end_layout
+
+\begin_layout Plain Layout
+
+        (np.array([0., 0.25*t0, 0.5*t0, 0.75*t0, t0, 1.5*t0, 2*t0]),
+\end_layout
+
+\begin_layout Plain Layout
+
+         np.array([0.05, 0.1, 0.2, 0.5, 1., 2., support])))
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+em_1 = HawkesEM(kernel_discretization=kern_d, max_iter=10000, tol=1e-5,
+\end_layout
+
+\begin_layout Plain Layout
+
+                verbose=True, n_threads=-1)
+\end_layout
+
+\begin_layout Plain Layout
+
+em_1.fit(multi_1_timestamps)
+\end_layout
+
+\begin_layout Plain Layout
+
+em_1_baseline = em_1.baseline
+\end_layout
+
+\begin_layout Plain Layout
+
+em_1_kernel = em_1.kernel
+\end_layout
+
+\begin_layout Plain Layout
+
+em_1_score = em_1.score()
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+em_2 = HawkesEM(kernel_discretization=kern_d, max_iter=10000, tol=1e-5,
+\end_layout
+
+\begin_layout Plain Layout
+
+                verbose=True, n_threads=-1)
+\end_layout
+
+\begin_layout Plain Layout
+
+em_2.fit(multi_2_timestamps)
+\end_layout
+
+\begin_layout Plain Layout
+
+em_2_baseline = em_2.baseline
+\end_layout
+
+\begin_layout Plain Layout
+
+em_2_kernel = em_2.kernel
+\end_layout
+
+\begin_layout Plain Layout
+
+em_2_score = em_2.score()
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+HawkesEM
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Differences in the learned kernels:
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+placement H
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename Tick_Figure_3_0_EM_fit.png
+	lyxscale 40
+	scale 40
+
+\end_inset
+
+
+\begin_inset Graphics
+	filename Tick_Figure_5_t0_EM_fit.png
+	lyxscale 40
+	scale 40
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Learned kernels HawkesEM
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+It is better to look at the log plots:
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+placement H
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename Tick_Figure_4_0_EM_fit_log.png
+	lyxscale 40
+	scale 40
+
+\end_inset
+
+
+\begin_inset Graphics
+	filename Tick_Figure_6_t0_EM_fit_log.png
+	lyxscale 40
+	scale 40
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Learned kernels HawkesEM - LogPlot
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Subsection
+Parametric
+\end_layout
+
+\begin_layout Subsubsection
+HawkesSumExpKern
+\end_layout
+
+\begin_layout Standard
+Running HawkesSumExpKern for the 2 kernels
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float algorithm
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\begin_inset listings
+lstparams "language=PSTricks,basicstyle={\sffamily}"
+inline false
+status open
+
+\begin_layout Plain Layout
+
+kern_d =
+\backslash
+
+\end_layout
+
+\begin_layout Plain Layout
+
+    np.concatenate(
+\end_layout
+
+\begin_layout Plain Layout
+
+        (np.array([0., 0.25*t0/4, 0.5*t0, 0.75*t0, t0, 1.5*t0, 2*t0]),
+\end_layout
+
+\begin_layout Plain Layout
+
+         np.array([0.05, 0.1, 0.2, 0.5, 1., 2., support])))
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+em_1 = HawkesEM(kernel_discretization=kern_d, max_iter=10000, tol=1e-5,
+\end_layout
+
+\begin_layout Plain Layout
+
+                verbose=True)
+\end_layout
+
+\begin_layout Plain Layout
+
+em_1.fit(multi_1_timestamps)
+\end_layout
+
+\begin_layout Plain Layout
+
+em_1_baseline = em_1.baseline
+\end_layout
+
+\begin_layout Plain Layout
+
+em_1_kernel = em_1.kernel
+\end_layout
+
+\begin_layout Plain Layout
+
+em_1_score = em_1.score()
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+em_2 = HawkesEM(kernel_discretization=kern_d, max_iter=10000, tol=1e-5,
+\end_layout
+
+\begin_layout Plain Layout
+
+                verbose=True)
+\end_layout
+
+\begin_layout Plain Layout
+
+em_2.fit(multi_2_timestamps)
+\end_layout
+
+\begin_layout Plain Layout
+
+em_2_baseline = em_2.baseline
+\end_layout
+
+\begin_layout Plain Layout
+
+em_2_kernel = em_2.kernel
+\end_layout
+
+\begin_layout Plain Layout
+
+em_2_score = em_2.score()
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+HawkesSumExp
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Differences in the learned kernels
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+placement H
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename Tick_Figure_7_0_SE_fit.png
+	lyxscale 40
+	scale 40
+
+\end_inset
+
+
+\begin_inset Graphics
+	filename Tick_Figure_9_0t_SE_fit.png
+	lyxscale 40
+	scale 40
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Learned kernels HawkesSumExpKern
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+It is better to look at the log plots:
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+placement H
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename Tick_Figure_8_0_SE_fit_log.png
+	lyxscale 40
+	scale 40
+
+\end_inset
+
+
+\begin_inset Graphics
+	filename Tick_Figure_10_t0_SE_fit_log.png
+	lyxscale 40
+	scale 40
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Learned kernels HawkesEM - LogPlot
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Section
+Conclusions
+\end_layout
+
+\begin_layout Standard
+In the same way that decay is an input to HawkesSumExpKern, latency should
+ be an input, especially for financial data.
+ It would be much better to calibrate the parametric learner considering
+ this input instead of using HawkesEM, since the simulation with HawkesKernelSum
+Exp would also benefit from it.
+ And even allowing for an array as an input (same sas decay) is good, because
+ different reactions might have different latencies as well.
+\end_layout
+
+\end_body
+\end_document
