@@ -7,7 +7,7 @@ from scipy.optimize import minimize
 from functools import partial
 from numba import jit, njit
 from numba import types
-from numba.typed import Dict, List
+from numba.typed import Dict
 
 from tick.base import TimeFunction
 from tick.hawkes import HawkesKernelTimeFunc
@@ -16,11 +16,11 @@ from tick.hawkes import HawkesKernelTimeFunc
 
 
 def time_funclat(f, support, lat=0, steps=100,
-              inter_mode=TimeFunction.InterConstRight):
+              inter_mode=TimeFunction.InterLinear):
     t_values = np.linspace(0, support, steps + 1)
     y_values = f(t_values)
     if lat > 0:
-        t_values_lat = np.linspace(0, lat, steps)
+        t_values_lat = np.linspace(0, lat, num=steps, endpoint=False)
         y_values_lat = np.zeros(steps)
         t_values_shifted = t_values + lat
         t_all = np.concatenate((t_values_lat, t_values_shifted))
@@ -290,10 +290,169 @@ def findθlatmsde(tss, bounds, x0, τ=0, maxiter=200, popsize=20, tol=1e-2,
         print_m=False, disp=False):
     results = []
     for ts in tss:
-        results = results + [findθlatmde(ts, bounds, x0, τ,
+        results = results + [findθlatmde(ts, bounds, τ,
             maxiter, popsize, tol, print_m, disp)]
     return results
 
+# %% Multidimensional with latency - all
+
+
+@njit
+def lllatall(θ, nts, maxtnm, Δts, δts, τts):
+    M = len(nts)
+    λ0m = θ[:M]
+    αmn = θ[M:M + M**2].reshape((M, M))
+    βmn = θ[M + M**2:].reshape((M, M))
+    llall = 0.
+    for m in range(M):
+        nm = nts[m]
+        s1 = np.sum(np.array(
+            [np.sum((αmn[m, n] / βmn[m, n]) * (1 - np.exp(-βmn[m, n] * δts[m, n])))
+             for n in range(M)]))
+        rin = np.zeros((M, nm))
+        for n in range(M):
+            ebdts = np.exp(-βmn[m, n] * Δts[m])
+            for i in range(1, nm):
+                rin[n][i] = ebdts[i] * rin[n][i - 1] + np.sum(np.exp(-βmn[m, n] * τts[m, n, i]))
+            rin[n] = αmn[m, n] * rin[n]
+        s2 = np.sum(np.log(λ0m[m] + np.sum(rin, axis=0)))
+        llms = -(maxtnm * (1 - λ0m[m]) - s1 + s2)
+        llall = llall + llms
+    return llall
+
+
+def findθlatall(ts, bounds, x0, τ=0, method='L-BFGS-B', print_msg=False):
+    nts = lenms(ts)
+    maxtnm = max_last_tn(ts)
+    Δts = ΔtsM(ts)
+    δts = δtsτMM(ts, τ)
+    τts = τtsiMM(ts, τ)
+    optim0 = partial(lllatall, nts=nts, maxtnm=maxtnm, Δts=Δts, δts=δts, τts=τts)
+    res0 = minimize(optim0, x0, method=method, bounds=bounds)
+    if print_msg:
+        print(res0.message)
+        print(res0.fun)
+    results = res0.x
+    return results
+
+
+# def findθlatdeall(ts, bounds, τ=0, maxiter=200, popsize=20, tol=1e-2,
+#         print_msg=False, disp=False):
+#     nts = lenms(ts)
+#     maxtnm = max_last_tn(ts)
+#     Δts = ΔtsM(ts)
+#     δts = δtsτMM(ts, τ)
+#     τts = τtsiMM(ts, τ)
+#     optim0 = partial(lllatall, nts=nts, maxtnm=maxtnm, Δts=Δts, δts=δts, τts=τts)
+#     res0 = differential_evolution(optim0, bounds=bounds,
+#             maxiter=maxiter, popsize=popsize, tol=tol, disp=disp)
+#     if print_msg:
+#         print(res0.message)
+#         print(res0.fun)
+#     results = res0.x
+#     return results
+
+# %% Multidimensional with latency - blocks
+
+@njit
+def exp_block(b):
+    return np.array([
+        [b[0], b[0], b[1], b[1]],
+        [b[0], b[0], b[1], b[1]],
+        [b[2], b[2], b[3], b[3]],
+        [b[2], b[2], b[3], b[3]]])
+
+
+@njit
+def exp_diag(b):
+    return np.array([
+        [b[0], b[1], b[2], b[3]],
+        [b[1], b[0], b[3], b[2]],
+        [b[4], b[5], b[6], b[7]],
+        [b[5], b[4], b[7], b[6]]])
+
+
+@njit
+def lllatblock(θ, bsz, mrng, nts, maxtnm, Δts, δts, τts):
+    M = len(nts)
+    λ0m = θ[:M]
+    αmn = exp_diag(θ[M:M + 2 * bsz])
+    βmn = exp_block(θ[M + 2 * bsz:])
+    llall = 0.
+    for m in mrng:
+        nm = nts[m]
+        s1 = np.sum(np.array(
+            [np.sum((αmn[m, n] / βmn[m, n]) * (1 - np.exp(-βmn[m, n] * δts[m, n])))
+             for n in range(M)]))
+        rin = np.zeros((M, nm))
+        for n in range(M):
+            ebdts = np.exp(-βmn[m, n] * Δts[m])
+            for i in range(1, nm):
+                rin[n][i] = ebdts[i] * rin[n][i - 1] + np.sum(np.exp(-βmn[m, n] * τts[m, n, i]))
+            rin[n] = αmn[m, n] * rin[n]
+        s2 = np.sum(np.log(λ0m[m] + np.sum(rin, axis=0)))
+        llms = -(maxtnm * (1 - λ0m[m]) - s1 + s2)
+        llall = llall + llms
+    return llall
+
+
+def slicexblock(x, M, bsz, m):
+    λ0 = x[:M][m]
+    αm = exp_diag(x[M:M + 2 * bsz])[m]
+    βm = exp_block(x[M + 2 * bsz:])[m]
+    return np.array([λ0] + αm.tolist() + βm.tolist())
+
+
+def findθlatblock(ts, bsz, mrngs, bounds, x0, τ=0,
+                  method='Powell', print_m=False, disp=False):
+    nts = lenms(ts)
+    M = len(nts)
+    maxtnm = max_last_tn(ts)
+    Δts = ΔtsM(ts)
+    δts = δtsτMM(ts, τ)
+    τts = τtsiMM(ts, τ)
+    results = []
+    lls = []
+    for mrng in mrngs:
+        optim0 = partial(lllatblock, bsz=bsz, mrng=mrng,
+                         nts=nts, maxtnm=maxtnm, Δts=Δts, δts=δts, τts=τts)
+        res0 = minimize(optim0, x0, method=method, bounds=bounds,
+                        options={'disp': disp})
+        lls = lls + [res0.fun]
+        if print_m:
+            print('mrng = ' + str(mrng))
+            print(res0.message)
+            print(res0.fun)
+        for m in mrng:
+            results = results + [slicexblock(res0.x, M, bsz, m)]
+    return [np.array(results), np.array(lls)]
+
+
+def findθlatblock_de(ts, bsz, mrngs, bounds, τ=0,
+                     maxiter=1000, popsize=20, atol=0., tol=1e-1,
+                     print_m=False, disp=False):
+    nts = lenms(ts)
+    M = len(nts)
+    maxtnm = max_last_tn(ts)
+    Δts = ΔtsM(ts)
+    δts = δtsτMM(ts, τ)
+    τts = τtsiMM(ts, τ)
+    results = []
+    lls = []
+    for mrng in mrngs:
+        optim0 = partial(lllatblock, bsz=bsz, mrng=mrng,
+                         nts=nts, maxtnm=maxtnm, Δts=Δts, δts=δts, τts=τts)
+        res0 = differential_evolution(optim0, bounds=bounds, strategy='best1bin',
+                mutation=(0.5, 1.5), recombination=0.3, disp=disp,
+                maxiter=maxiter, popsize=popsize, tol=tol, atol=atol)
+        lls = lls + [res0.fun]
+        if print_m:
+            print('mrng = ' + str(mrng))
+            print(res0.message)
+            print(res0.fun)
+        for m in mrng:
+            results = results + [slicexblock(res0.x, M, bsz, m)]
+    return [np.array(results), np.array(lls)]
 
 # %% One dimension - no recursion (benchmarking)
 
